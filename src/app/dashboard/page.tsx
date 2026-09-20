@@ -1,15 +1,23 @@
+
 import PersonalizedFeed from "@/components/articles/PersonalizedFeed";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import LogoutButton from "@/components/auth/LogoutButton";
+
 import {
   calculateCategoryBehaviorScores,
   getCategoryBehaviorAdjustment,
 } from "@/services/behavioral-scoring";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient();
+
+  // --------------------------------------------
+  // AUTHENTICATION
+  // --------------------------------------------
 
   const {
     data: { user },
@@ -19,9 +27,9 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  // --------------------------------------------------
-  // LOAD USER PROFILE
-  // --------------------------------------------------
+  // --------------------------------------------
+  // USER PROFILE
+  // --------------------------------------------
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -29,9 +37,9 @@ export default async function DashboardPage() {
     .eq("id", user.id)
     .single();
 
-  // --------------------------------------------------
-  // LOAD USER PREFERENCES
-  // --------------------------------------------------
+  // --------------------------------------------
+  // USER PREFERENCES
+  // --------------------------------------------
 
   const { data: preferences } = await supabase
     .from("user_preferences")
@@ -39,31 +47,30 @@ export default async function DashboardPage() {
     .eq("user_id", user.id)
     .single();
 
-  // Force onboarding if preferences are not completed
   if (!preferences?.onboarding_completed) {
     redirect("/preferences");
   }
 
-  const userCategories =
-    preferences?.categories?.map((category: string) =>
+  const userCategories: string[] =
+    preferences.categories?.map((category: string) =>
       category.toLowerCase()
     ) ?? [];
 
-  // --------------------------------------------------
-  // LOAD ARTICLES
-  // --------------------------------------------------
+  // --------------------------------------------
+  // FETCH PERSONALIZED ARTICLES
+  // --------------------------------------------
 
   let articlesQuery = supabase
     .from("articles")
     .select(
       "id, title, description, url, image_url, source_name, category, published_at, sentiment_label, sentiment_score"
     )
+    .eq("is_hidden", false)
     .order("published_at", {
       ascending: false,
     })
     .limit(1000);
 
-  // Only load articles from user's selected categories
   if (userCategories.length > 0) {
     articlesQuery = articlesQuery.in(
       "category",
@@ -83,9 +90,9 @@ export default async function DashboardPage() {
     );
   }
 
-  // --------------------------------------------------
-  // LOAD RELEVANCE + SIMILARITY SCORES
-  // --------------------------------------------------
+  // --------------------------------------------
+  // RELEVANCE AND SIMILARITY SCORES
+  // --------------------------------------------
 
   const {
     data: relevanceScores,
@@ -104,9 +111,9 @@ export default async function DashboardPage() {
     );
   }
 
-  // --------------------------------------------------
-  // LOAD USER INTERACTIONS
-  // --------------------------------------------------
+  // --------------------------------------------
+  // USER INTERACTIONS
+  // --------------------------------------------
 
   const {
     data: interactions,
@@ -131,93 +138,74 @@ export default async function DashboardPage() {
     );
   }
 
-  // --------------------------------------------------
-  // CREATE SCORE LOOKUP MAP
-  // --------------------------------------------------
+  // --------------------------------------------
+  // SCORE LOOKUP
+  // --------------------------------------------
 
   const scoreMap = new Map(
     relevanceScores?.map((score) => [
       score.article_id,
       {
-        relevanceScore:
-          score.relevance_score,
-
-        relevanceReason:
-          score.relevance_reason,
-
-        similarityScore:
-          score.similarity_score,
-
-        matchedTerms:
-          score.matched_terms,
+        relevanceScore: score.relevance_score,
+        relevanceReason: score.relevance_reason,
+        similarityScore: score.similarity_score,
+        matchedTerms: score.matched_terms,
       },
     ]) ?? []
   );
 
-  // --------------------------------------------------
-  // CREATE INTERACTION LOOKUP MAP
-  // --------------------------------------------------
+  // --------------------------------------------
+  // INTERACTION LOOKUP
+  // --------------------------------------------
 
   const interactionMap = new Map(
     interactions?.map((interaction) => [
       interaction.article_id,
       {
-        liked:
-          interaction.liked,
-
-        disliked:
-          interaction.disliked,
-
-        saved:
-          interaction.saved,
+        liked: interaction.liked,
+        disliked: interaction.disliked,
+        saved: interaction.saved,
       },
     ]) ?? []
   );
 
-  // --------------------------------------------------
-  // BUILD BEHAVIOR HISTORY
-  // --------------------------------------------------
+  // --------------------------------------------
+  // BEHAVIORAL HISTORY
+  // --------------------------------------------
 
   const behavioralHistory =
     interactions?.map((interaction) => {
-      const relatedArticle =
-        Array.isArray(interaction.articles)
-          ? interaction.articles[0]
-          : interaction.articles;
+      const relatedArticle = Array.isArray(
+        interaction.articles
+      )
+        ? interaction.articles[0]
+        : interaction.articles;
 
       return {
-        category:
-          relatedArticle?.category ?? null,
-
-        liked:
-          interaction.liked,
-
-        disliked:
-          interaction.disliked,
-
-        saved:
-          interaction.saved,
+        category: relatedArticle?.category ?? null,
+        liked: interaction.liked,
+        disliked: interaction.disliked,
+        saved: interaction.saved,
       };
     }) ?? [];
 
-  // Calculate behavioral preferences for each category
   const categoryBehaviorScores =
     calculateCategoryBehaviorScores(
       behavioralHistory
     );
 
-  // --------------------------------------------------
-  // BUILD PERSONALIZED ARTICLE FEED
-  // --------------------------------------------------
+  // --------------------------------------------
+  // BUILD PERSONALIZED FEED
+  // --------------------------------------------
 
   const personalizedArticles =
     articles
       ?.map((article) => {
-        const scoreData =
-          scoreMap.get(article.id);
+        const scoreData = scoreMap.get(article.id);
 
-        const interactionData =
-          interactionMap.get(article.id);
+        const interactionData = interactionMap.get(
+          article.id
+        );
 
         const relevanceScore =
           scoreData?.relevanceScore ?? 0;
@@ -225,19 +213,13 @@ export default async function DashboardPage() {
         const similarityScore =
           scoreData?.similarityScore ?? 0;
 
-        // ----------------------------------------------
-        // BASE RECOMMENDATION SCORE
-        // ----------------------------------------------
-        // 70% relevance
-        // 30% cosine text similarity
+        // 70% relevance + 30% similarity
 
         const baseRecommendationScore =
           relevanceScore * 0.7 +
           similarityScore * 0.3;
 
-        // ----------------------------------------------
-        // CATEGORY BEHAVIOR ADJUSTMENT
-        // ----------------------------------------------
+        // Category behavior
 
         const categoryBehaviorAdjustment =
           getCategoryBehaviorAdjustment(
@@ -245,28 +227,20 @@ export default async function DashboardPage() {
             categoryBehaviorScores
           );
 
-        // ----------------------------------------------
-        // DIRECT ARTICLE INTERACTION SIGNALS
-        // ----------------------------------------------
+        // Direct interactions
 
-        const likeBoost =
-          interactionData?.liked
-            ? 0.1
-            : 0;
+        const likeBoost = interactionData?.liked
+          ? 0.1
+          : 0;
 
         const dislikePenalty =
-          interactionData?.disliked
-            ? 0.2
-            : 0;
+          interactionData?.disliked ? 0.2 : 0;
 
-        const saveBoost =
-          interactionData?.saved
-            ? 0.08
-            : 0;
+        const saveBoost = interactionData?.saved
+          ? 0.08
+          : 0;
 
-        // ----------------------------------------------
-        // FINAL RECOMMENDATION SCORE
-        // ----------------------------------------------
+        // Final recommendation score
 
         const combinedScore = Number(
           Math.max(
@@ -285,15 +259,13 @@ export default async function DashboardPage() {
         return {
           ...article,
 
-          relevance_score:
-            relevanceScore,
+          relevance_score: relevanceScore,
 
           relevance_reason:
             scoreData?.relevanceReason ??
             "No relevance score available.",
 
-          similarity_score:
-            similarityScore,
+          similarity_score: similarityScore,
 
           matched_terms:
             scoreData?.matchedTerms ?? [],
@@ -301,76 +273,61 @@ export default async function DashboardPage() {
           category_behavior_adjustment:
             categoryBehaviorAdjustment,
 
-          combined_score:
-            combinedScore,
+          combined_score: combinedScore,
 
-          liked:
-            interactionData?.liked ?? false,
+          liked: interactionData?.liked ?? false,
 
           disliked:
             interactionData?.disliked ?? false,
 
-          saved:
-            interactionData?.saved ?? false,
+          saved: interactionData?.saved ?? false,
         };
       })
 
-      // Highest recommendation score first
       .sort((a, b) => {
         if (
-          b.combined_score !==
-          a.combined_score
+          b.combined_score !== a.combined_score
         ) {
           return (
-            b.combined_score -
-            a.combined_score
+            b.combined_score - a.combined_score
           );
         }
 
-        // If scores are equal, show newer article first
-        const dateA =
-          a.published_at
-            ? new Date(
-                a.published_at
-              ).getTime()
-            : 0;
+        const dateA = a.published_at
+          ? new Date(a.published_at).getTime()
+          : 0;
 
-        const dateB =
-          b.published_at
-            ? new Date(
-                b.published_at
-              ).getTime()
-            : 0;
+        const dateB = b.published_at
+          ? new Date(b.published_at).getTime()
+          : 0;
 
         return dateB - dateA;
       }) ?? [];
 
-  // --------------------------------------------------
+  // --------------------------------------------
   // DASHBOARD STATISTICS
-  // --------------------------------------------------
+  // --------------------------------------------
 
   const likedCount =
     interactions?.filter(
-      (interaction) =>
-        interaction.liked
+      (interaction) => interaction.liked
     ).length ?? 0;
 
   const savedCount =
     interactions?.filter(
-      (interaction) =>
-        interaction.saved
+      (interaction) => interaction.saved
     ).length ?? 0;
 
   const interestCount =
-    preferences?.categories?.length ?? 0;
+    preferences.categories?.length ?? 0;
 
-  // --------------------------------------------------
-  // PAGE UI
-  // --------------------------------------------------
+  // --------------------------------------------
+  // DASHBOARD UI
+  // --------------------------------------------
 
   return (
     <main className="relative min-h-screen overflow-hidden">
-      {/* Background glow */}
+      {/* Background effects */}
 
       <div className="pointer-events-none absolute left-[-120px] top-20 h-96 w-96 rounded-full bg-violet-600/10 blur-[130px]" />
 
@@ -378,14 +335,13 @@ export default async function DashboardPage() {
 
       <div className="page-container relative py-10 sm:py-12">
 
-        {/* ==========================================
+        {/* ====================================
             WELCOME SECTION
-        ========================================== */}
+        ==================================== */}
 
         <section className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
 
           <div>
-
             <div className="ai-badge">
               <span>✦</span>
               PERSONALIZED INTELLIGENCE
@@ -402,13 +358,14 @@ export default async function DashboardPage() {
             </h1>
 
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
-              Your personalized news dashboard is ranked
-              using your interests, relevance scoring,
+              Your personalized news dashboard uses
+              your interests, relevance scoring,
               cosine text similarity, and interaction
               history.
             </p>
-
           </div>
+
+          {/* NAVIGATION BUTTONS */}
 
           <div className="flex flex-wrap gap-3">
 
@@ -428,17 +385,26 @@ export default async function DashboardPage() {
               Saved Articles
             </Link>
 
-          </div>
+            {/* NEW: TODAY'S NEWS BUTTON */}
 
+            <Link
+              href="/dashboard/today"
+              className="secondary-button"
+            >
+              <span>📰</span>
+              Latest Available News
+            </Link>
+
+          </div>
         </section>
 
-        {/* ==========================================
-            DASHBOARD STATS
-        ========================================== */}
+        {/* ====================================
+            DASHBOARD STATISTICS
+        ==================================== */}
 
         <section className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
-          {/* Recommended Articles */}
+          {/* RECOMMENDATIONS */}
 
           <div className="glass-card hover-card p-5">
 
@@ -455,16 +421,19 @@ export default async function DashboardPage() {
             </div>
 
             <p className="mt-5 text-3xl font-bold text-white">
-              {Math.min(personalizedArticles.length, 20)}
+              {Math.min(
+                personalizedArticles.length,
+                100
+              )}
             </p>
 
             <p className="mt-1 text-sm text-slate-500">
-              Top recommendations
+              Available recommendations
             </p>
 
           </div>
 
-          {/* Interests */}
+          {/* INTERESTS */}
 
           <div className="glass-card hover-card p-5">
 
@@ -490,7 +459,7 @@ export default async function DashboardPage() {
 
           </div>
 
-          {/* Liked Articles */}
+          {/* LIKED ARTICLES */}
 
           <div className="glass-card hover-card p-5">
 
@@ -516,7 +485,7 @@ export default async function DashboardPage() {
 
           </div>
 
-          {/* Saved Articles */}
+          {/* SAVED ARTICLES */}
 
           <div className="glass-card hover-card p-5">
 
@@ -544,9 +513,9 @@ export default async function DashboardPage() {
 
         </section>
 
-        {/* ==========================================
+        {/* ====================================
             INTEREST PROFILE
-        ========================================== */}
+        ==================================== */}
 
         <section className="glass-card relative mt-6 overflow-hidden p-6 sm:p-7">
 
@@ -556,7 +525,7 @@ export default async function DashboardPage() {
 
             <div className="flex items-center gap-3">
 
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-blue-600 text-white shadow-[0_8px_25px_rgba(124,58,237,0.25)]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-blue-600 text-white">
                 ✦
               </div>
 
@@ -586,11 +555,11 @@ export default async function DashboardPage() {
 
           <div className="relative mt-6 flex flex-wrap gap-2.5">
 
-            {preferences?.categories?.map(
+            {preferences.categories?.map(
               (category: string) => (
                 <span
                   key={category}
-                  className="rounded-full border border-violet-400/20 bg-violet-500/10 px-3.5 py-1.5 text-xs font-medium text-violet-200 transition hover:border-violet-400/40 hover:bg-violet-500/15"
+                  className="rounded-full border border-violet-400/20 bg-violet-500/10 px-3.5 py-1.5 text-xs font-medium text-violet-200"
                 >
                   {category}
                 </span>
@@ -601,9 +570,9 @@ export default async function DashboardPage() {
 
         </section>
 
-        {/* ==========================================
-            PERSONALIZED FEED
-        ========================================== */}
+        {/* ====================================
+            PERSONALIZED NEWS FEED
+        ==================================== */}
 
         <section className="mt-12">
 
@@ -626,9 +595,10 @@ export default async function DashboardPage() {
               </h2>
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                Stories are ordered using relevance,
-                cosine text similarity, category behavior,
-                and your direct article interactions.
+                Explore news using relevance,
+                similarity, category behavior, and
+                your article interactions. Select
+                Latest News to see newer stories first.
               </p>
 
             </div>
@@ -637,24 +607,31 @@ export default async function DashboardPage() {
 
               <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
 
-              Top {Math.min(personalizedArticles.length, 20)} recommendations
+              Up to{" "}
+              {Math.min(
+                personalizedArticles.length,
+                100
+              )}{" "}
+              articles
 
             </div>
 
           </div>
 
+          {/* PERSONALIZED FEED COMPONENT */}
+
           <PersonalizedFeed
             articles={personalizedArticles}
             categories={
-              preferences?.categories ?? []
+              preferences.categories ?? []
             }
           />
 
         </section>
 
-        {/* ==========================================
+        {/* ====================================
             RECOMMENDATION EXPLANATION
-        ========================================== */}
+        ==================================== */}
 
         <section className="mt-12">
 
@@ -672,17 +649,16 @@ export default async function DashboardPage() {
               </h2>
 
               <p className="mt-3 text-sm leading-6 text-slate-500">
-                SmartFeed AI does not rank articles
-                using only one factor. Multiple
-                personalization signals contribute
-                to the final ranking.
+                SmartFeed AI combines multiple
+                personalization signals to calculate
+                recommendation scores.
               </p>
 
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
 
-              {/* Relevance */}
+              {/* RELEVANCE */}
 
               <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
 
@@ -706,7 +682,7 @@ export default async function DashboardPage() {
 
               </div>
 
-              {/* Similarity */}
+              {/* SIMILARITY */}
 
               <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
 
@@ -730,7 +706,7 @@ export default async function DashboardPage() {
 
               </div>
 
-              {/* Interactions */}
+              {/* INTERACTIONS */}
 
               <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
 
@@ -745,7 +721,7 @@ export default async function DashboardPage() {
 
               </div>
 
-              {/* Category Behavior */}
+              {/* CATEGORY BEHAVIOR */}
 
               <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
 
@@ -766,9 +742,9 @@ export default async function DashboardPage() {
 
         </section>
 
-        {/* ==========================================
-            ACCOUNT BAR
-        ========================================== */}
+        {/* ====================================
+            ACCOUNT SECTION
+        ==================================== */}
 
         <section className="mt-8 flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.025] p-5 sm:flex-row sm:items-center sm:justify-between">
 

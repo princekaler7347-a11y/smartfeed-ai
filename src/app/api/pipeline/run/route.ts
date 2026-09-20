@@ -1,12 +1,21 @@
+
 import { NextResponse } from "next/server";
+
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+
 import { syncNews } from "@/services/news-sync";
+
 import { processAllSentiment } from "@/services/sentiment-processing";
+
 import { processRecommendationsForUser } from "@/services/recommendation-processing";
 
 export async function POST() {
   try {
     const supabase = await createSupabaseServerClient();
+
+    // -----------------------------------------
+    // STEP 1: VERIFY AUTHENTICATION
+    // -----------------------------------------
 
     const {
       data: { user },
@@ -17,27 +26,54 @@ export async function POST() {
       return NextResponse.json(
         {
           success: false,
-          message: "Unauthorized.",
+          message: "Unauthorized. Please log in.",
         },
         { status: 401 }
       );
     }
 
     // -----------------------------------------
-    // STEP 1: SYNC LATEST NEWS
+    // STEP 2: VERIFY ADMIN ROLE
+    // -----------------------------------------
+
+    const {
+      data: profile,
+      error: profileError,
+    } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (
+      profileError ||
+      !profile ||
+      profile.role !== "admin"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Forbidden. Admin access required.",
+        },
+        { status: 403 }
+      );
+    }
+
+    // -----------------------------------------
+    // STEP 3: SYNC LATEST NEWS
     // -----------------------------------------
 
     const newsResult = await syncNews();
 
     // -----------------------------------------
-    // STEP 2: PROCESS ALL NEW SENTIMENT
+    // STEP 4: PROCESS ALL NEW SENTIMENT
     // -----------------------------------------
 
     const sentimentResult =
       await processAllSentiment();
 
     // -----------------------------------------
-    // STEP 3: RECALCULATE USER RECOMMENDATIONS
+    // STEP 5: RECALCULATE ADMIN RECOMMENDATIONS
     // -----------------------------------------
 
     const recommendationResult =
@@ -46,48 +82,37 @@ export async function POST() {
       );
 
     // -----------------------------------------
-    // PIPELINE COMPLETE
+    // STEP 6: RETURN PIPELINE RESULTS
     // -----------------------------------------
 
     return NextResponse.json({
       success: true,
 
       news: {
-        fetched:
-          newsResult.fetched,
-        inserted:
-          newsResult.inserted,
+        fetched: newsResult.fetched,
+        inserted: newsResult.inserted,
       },
 
       sentiment: {
-        processed:
-          sentimentResult.processed,
+        processed: sentimentResult.processed,
       },
 
       recommendations: {
-        processed:
-          recommendationResult.processed,
-
-        totalFound:
-          recommendationResult.totalFound,
-
-        userCategories:
-          recommendationResult.userCategories,
+        processed: recommendationResult.processed,
+        totalFound: recommendationResult.totalFound,
+        userCategories: recommendationResult.userCategories,
       },
 
       message:
         "SmartFeed AI processing pipeline completed successfully.",
     });
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unknown pipeline error.";
+    console.error("Pipeline execution failed:", error);
 
     return NextResponse.json(
       {
         success: false,
-        message,
+        message: "Pipeline execution failed.",
       },
       { status: 500 }
     );
