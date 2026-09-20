@@ -18,6 +18,7 @@ type PersonalizedArticle = {
   source_name: string;
   category: string | null;
   published_at: string | null;
+  created_at: string | null;
   sentiment_label: string | null;
   sentiment_score: number | null;
   relevance_score: number | null;
@@ -39,6 +40,7 @@ type SearchArticle = {
   source_name: string;
   category: string | null;
   published_at: string | null;
+  created_at?: string | null;
   sentiment_label: string | null;
   sentiment_score: number | null;
   liked: boolean;
@@ -102,6 +104,11 @@ function convertSearchArticle(
 ): PersonalizedArticle {
   return {
     ...article,
+
+    // The search API may not return created_at yet.
+    // Never substitute today's date.
+    created_at: article.created_at ?? null,
+
     relevance_score: null,
     relevance_reason: null,
     similarity_score: null,
@@ -829,6 +836,7 @@ export default function PersonalizedFeed({
               imageUrl={article.image_url}
               sourceName={article.source_name}
               publishedAt={article.published_at}
+              createdAt={article.created_at}
               sentimentLabel={
                 article.sentiment_label
               }

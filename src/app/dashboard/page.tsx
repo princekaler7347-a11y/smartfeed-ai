@@ -33,7 +33,7 @@ export default async function DashboardPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name")
+    .select("full_name, role")
     .eq("id", user.id)
     .single();
 
@@ -61,15 +61,15 @@ export default async function DashboardPage() {
   // --------------------------------------------
 
   let articlesQuery = supabase
-    .from("articles")
-    .select(
-      "id, title, description, url, image_url, source_name, category, published_at, sentiment_label, sentiment_score"
-    )
-    .eq("is_hidden", false)
-    .order("published_at", {
-      ascending: false,
-    })
-    .limit(1000);
+  .from("articles")
+  .select(
+    "id, title, description, url, image_url, source_name, category, published_at, created_at, sentiment_label, sentiment_score"
+  )
+  .eq("is_hidden", false)
+  .order("published_at", {
+    ascending: false,
+  })
+  .limit(1000);
 
   if (userCategories.length > 0) {
     articlesQuery = articlesQuery.in(
@@ -394,6 +394,18 @@ export default async function DashboardPage() {
               <span>📰</span>
               Latest Available News
             </Link>
+
+            {/* ADMIN PANEL — visible only to admins */}
+
+            {profile?.role === "admin" && (
+              <Link
+                href="/admin"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-5 py-3 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/20"
+              >
+                <span>🛡️</span>
+                Admin Panel
+              </Link>
+            )}
 
           </div>
         </section>

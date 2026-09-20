@@ -14,6 +14,7 @@ type ArticleCardProps = {
   imageUrl: string | null;
   sourceName: string;
   publishedAt: string | null;
+  createdAt?: string | null;
   sentimentLabel: string | null;
   sentimentScore: number | null;
   relevanceScore: number | null;
@@ -179,6 +180,32 @@ function getFallbackDesign(
   );
 }
 
+// --------------------------------------------------
+// SAFE DATE FORMATTING
+// --------------------------------------------------
+
+function formatArticleDate(
+  value: string | null | undefined
+): string | null {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+// --------------------------------------------------
+// ARTICLE CARD
+// --------------------------------------------------
+
 export default function ArticleCard({
   articleId,
   category,
@@ -188,6 +215,7 @@ export default function ArticleCard({
   imageUrl,
   sourceName,
   publishedAt,
+  createdAt = null,
   sentimentLabel,
   sentimentScore,
   relevanceScore,
@@ -220,18 +248,13 @@ export default function ArticleCard({
 
   const fallback = getFallbackDesign(category);
 
-  // FORMATTED DATE
+  // FORMATTED DATES
 
-  const formattedDate = publishedAt
-    ? new Date(publishedAt).toLocaleDateString(
-        "en-US",
-        {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-        }
-      )
-    : null;
+  const formattedPublishedDate =
+    formatArticleDate(publishedAt);
+
+  const formattedCreatedDate =
+    formatArticleDate(createdAt);
 
   // RECOMMENDATION SCORES
 
@@ -378,23 +401,23 @@ export default function ArticleCard({
       {/* ARTICLE CONTENT */}
 
       <div className="flex flex-1 flex-col p-5 sm:p-6">
-        {/* SOURCE AND DATE */}
+        {/* SOURCE AND DATES */}
 
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="font-semibold text-violet-300">
+        <div className="space-y-1.5 text-xs">
+          <p className="font-semibold text-violet-300">
             {sourceName}
-          </span>
+          </p>
 
-          {formattedDate && (
-            <>
-              <span className="text-slate-700">
-                •
-              </span>
+          {formattedCreatedDate && (
+            <p className="text-emerald-300">
+              Added to SmartFeed: {formattedCreatedDate}
+            </p>
+          )}
 
-              <span className="text-slate-500">
-                {formattedDate}
-              </span>
-            </>
+          {formattedPublishedDate && (
+            <p className="text-slate-500">
+              Originally published: {formattedPublishedDate}
+            </p>
           )}
         </div>
 

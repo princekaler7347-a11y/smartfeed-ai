@@ -1,5 +1,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
+
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function GET(request: NextRequest) {
@@ -7,6 +8,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createSupabaseServerClient();
 
     // Verify the logged-in user.
+
     const {
       data: { user },
       error: authError,
@@ -45,11 +47,14 @@ export async function GET(request: NextRequest) {
 
     // Search all visible articles, regardless of
     // the user's selected interest categories.
+    // Include both the original publication date
+    // and the actual SmartFeed import date.
+
     const { data: articles, error: searchError } =
       await supabase
         .from("articles")
         .select(
-          "id, title, description, url, image_url, source_name, category, published_at, sentiment_label, sentiment_score"
+          "id, title, description, url, image_url, source_name, category, published_at, created_at, sentiment_label, sentiment_score"
         )
         .eq("is_hidden", false)
         .or(
@@ -79,6 +84,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Retrieve interactions for THIS USER only.
+
     const articleIds = foundArticles.map(
       (article) => article.id
     );
@@ -105,6 +111,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Match each interaction to its article ID.
+
     const interactionMap = new Map(
       (interactions ?? []).map((interaction) => [
         interaction.article_id,
