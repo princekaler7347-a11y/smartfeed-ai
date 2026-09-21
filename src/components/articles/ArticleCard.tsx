@@ -4,6 +4,7 @@
 import { useState } from "react";
 import ArticleNotes from "@/components/articles/ArticleNotes";
 import ArticleShare from "@/components/articles/ArticleShare";
+import ArticleReport from "@/components/articles/ArticleReport";
 
 type ArticleCardProps = {
   articleId: number;
@@ -629,6 +630,10 @@ export default function ArticleCard({
             title={title}
             url={url}
           />
+
+          {/* REPORT ARTICLE */}
+
+          <ArticleReport articleId={articleId} />
 
           {/* READ ARTICLE */}
 

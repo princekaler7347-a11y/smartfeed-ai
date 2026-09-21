@@ -1,6 +1,6 @@
 
-import { redirect } from "next/navigation";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
@@ -8,8 +8,8 @@ import AdminRefreshNews from "@/components/AdminRefreshNews";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
-  // Step 1: Verify the logged-in user.
+export default async function AdminDashboardPage() {
+  // STEP 1: Verify authentication.
   const supabase = await createSupabaseServerClient();
 
   const {
@@ -21,7 +21,7 @@ export default async function AdminPage() {
     redirect("/login");
   }
 
-  // Step 2: Check the user's role on the server.
+  // STEP 2: Verify administrator role.
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("full_name, role")
@@ -32,14 +32,14 @@ export default async function AdminPage() {
     redirect("/dashboard");
   }
 
-  // Step 3: Load dashboard statistics.
-  // Use the secret-key client only after verifying admin access.
+  // STEP 3: Fetch dashboard statistics.
   const admin = createSupabaseAdminClient();
 
   const [
-    { count: totalArticles, error: articlesError },
-    { count: totalUsers, error: usersError },
-    { count: totalInteractions, error: interactionsError },
+    articlesResult,
+    usersResult,
+    interactionsResult,
+    reportsResult,
   ] = await Promise.all([
     admin
       .from("articles")
@@ -50,28 +50,35 @@ export default async function AdminPage() {
       .select("*", { count: "exact", head: true }),
 
     admin
-      .from("user_article_interactions")
+      .from("user_interactions")
       .select("*", { count: "exact", head: true }),
-  ]);
 
-  if (articlesError || usersError || interactionsError) {
-    throw new Error(
-      "Unable to load admin dashboard statistics."
-    );
-  }
+    admin
+      .from("article_reports")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pending"),
+  ]);
 
   const stats = [
     {
-      label: "Total Users",
-      value: totalUsers ?? 0,
+      title: "Total Articles",
+      value: articlesResult.count ?? 0,
+      icon: "📰",
     },
     {
-      label: "Total Articles",
-      value: totalArticles ?? 0,
+      title: "Registered Users",
+      value: usersResult.count ?? 0,
+      icon: "👥",
     },
     {
-      label: "User Interactions",
-      value: totalInteractions ?? 0,
+      title: "User Interactions",
+      value: interactionsResult.count ?? 0,
+      icon: "❤️",
+    },
+    {
+      title: "Pending Reports",
+      value: reportsResult.count ?? 0,
+      icon: "🚩",
     },
   ];
 
@@ -79,18 +86,20 @@ export default async function AdminPage() {
     <main className="min-h-screen bg-slate-950 px-6 py-12 text-white">
       <div className="mx-auto max-w-6xl">
         {/* HEADER */}
+
         <div className="mb-10 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-violet-400">
-              SmartFeed AI
+            <p className="text-sm font-semibold uppercase tracking-widest text-violet-400">
+              SmartFeed AI · Admin
             </p>
 
-            <h1 className="text-3xl font-bold md:text-4xl">
+            <h1 className="mt-2 text-3xl font-bold md:text-4xl">
               Admin Dashboard
             </h1>
 
             <p className="mt-3 text-slate-400">
               Welcome, {profile.full_name || "Administrator"}.
+              Manage your SmartFeed AI platform here.
             </p>
           </div>
 
@@ -98,68 +107,124 @@ export default async function AdminPage() {
             href="/dashboard"
             className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-medium transition hover:bg-slate-800"
           >
-            User Dashboard
+            ← Back to Dashboard
           </Link>
         </div>
 
-        {/* STATISTICS */}
-        <div className="grid gap-6 md:grid-cols-3">
+        {/* DASHBOARD STATISTICS */}
+
+        <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {stats.map((stat) => (
             <div
-              key={stat.label}
-              className="rounded-2xl border border-violet-500/20 bg-slate-900 p-7 shadow-lg"
+              key={stat.title}
+              className="rounded-2xl border border-violet-500/20 bg-slate-900 p-6"
             >
-              <p className="text-sm text-slate-400">
-                {stat.label}
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-slate-400">
+                  {stat.title}
+                </p>
 
-              <p className="mt-4 text-4xl font-bold text-violet-400">
+                <span className="text-2xl">
+                  {stat.icon}
+                </span>
+              </div>
+
+              <p className="mt-4 text-3xl font-bold text-white">
                 {stat.value}
               </p>
             </div>
           ))}
-        </div>
+        </section>
 
         {/* CONTENT MANAGEMENT */}
-        <section className="mt-10 rounded-2xl border border-slate-800 bg-slate-900 p-7">
+
+        <section className="mt-12">
           <h2 className="text-2xl font-bold">
             Content Management
           </h2>
 
-          <p className="mt-3 text-slate-400">
-            Manage articles and view registered users from
-            your administration panel.
+          <p className="mt-2 text-sm text-slate-400">
+            Manage articles, users, and reports submitted
+            by your readers.
           </p>
 
-          <div className="mt-6 flex flex-wrap gap-4">
-            {/* MANAGE ARTICLES */}
+          <div className="mt-6 grid gap-5 md:grid-cols-3">
+            {/* ARTICLE MANAGEMENT */}
+
             <Link
               href="/admin/articles"
-              className="inline-flex items-center gap-3 rounded-xl border border-violet-500/30 bg-violet-500/10 px-5 py-3 font-semibold text-violet-300 transition hover:border-violet-400 hover:bg-violet-500/20"
+              className="rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-violet-500 hover:bg-slate-800"
             >
-              <span>▤</span>
-              Manage Articles
-              <span>→</span>
+              <div className="mb-4 text-3xl">
+                📰
+              </div>
+
+              <h3 className="text-lg font-semibold text-white">
+                Article Management
+              </h3>
+
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                View, edit, hide, unhide, and delete
+                articles published on SmartFeed AI.
+              </p>
+
+              <p className="mt-5 text-sm font-semibold text-violet-400">
+                Manage Articles →
+              </p>
             </Link>
 
-            {/* MANAGE USERS */}
+            {/* USER MANAGEMENT */}
+
             <Link
               href="/admin/users"
-              className="inline-flex items-center gap-3 rounded-xl border border-blue-500/30 bg-blue-500/10 px-5 py-3 font-semibold text-blue-300 transition hover:border-blue-400 hover:bg-blue-500/20"
+              className="rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-violet-500 hover:bg-slate-800"
             >
-              <span>♙</span>
-              Manage Users
-              <span>→</span>
+              <div className="mb-4 text-3xl">
+                👥
+              </div>
+
+              <h3 className="text-lg font-semibold text-white">
+                User Management
+              </h3>
+
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                View registered users and their
+                account information.
+              </p>
+
+              <p className="mt-5 text-sm font-semibold text-violet-400">
+                View Users →
+              </p>
+            </Link>
+
+            {/* REPORT MANAGEMENT */}
+
+            <Link
+              href="/admin/reports"
+              className="rounded-2xl border border-amber-500/20 bg-slate-900 p-6 transition hover:border-amber-500 hover:bg-slate-800"
+            >
+              <div className="mb-4 text-3xl">
+                🚩
+              </div>
+
+              <h3 className="text-lg font-semibold text-white">
+                Manage Reports
+              </h3>
+
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Review reported articles, resolve or
+                dismiss reports, and hide articles.
+              </p>
+
+              <p className="mt-5 text-sm font-semibold text-amber-400">
+                Review Reports →
+              </p>
             </Link>
           </div>
-
-          <p className="mt-5 text-xs text-slate-500">
-            Administrator access is required to open
-            management pages.
-          </p>
         </section>
 
-        {/* NEWS PIPELINE */}
+        {/* ORIGINAL NEWS PIPELINE - RESTORED */}
+
         <AdminRefreshNews />
       </div>
     </main>
